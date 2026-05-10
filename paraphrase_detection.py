@@ -70,9 +70,11 @@ class ParaphraseGPT(nn.Module):
      of 3919) for examples that are not paraphrases.
     """
 
-    'Takes a batch of sentences and produces embeddings for them.'
     ### YOUR CODE HERE
-    raise NotImplementedError
+    outputs = self.gpt(input_ids, attention_mask)
+    last_token = outputs['last_token']
+    logits = self.paraphrase_detection_head(last_token)
+    return logits
 
 
 
