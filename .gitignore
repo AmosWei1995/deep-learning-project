@@ -5,3 +5,42 @@
 *.pkl
 .idea/
 out/
+
+# Python cache/build
+__pycache__/
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Virtual environments / Conda
+.venv/
+venv/
+env/
+ENV/
+.conda/
+conda-meta/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+
+# IDE/editor
+.vscode/*
+
+# Common model/data artifacts
+*.ckpt
+*.bin
+*.h5
