@@ -2,6 +2,7 @@ import torch
 
 from einops import rearrange
 from torch import nn
+import torch.nn.functional as F
 
 
 class CausalSelfAttention(nn.Module):
@@ -31,11 +32,46 @@ class CausalSelfAttention(nn.Module):
     proj = rearrange(proj, 'b t h d -> b h t d')
     return proj
 
-  def attention(self, key, query, value, attention_mask):
+  # def attention(self, query, key,  value, attention_mask):
 
-    ### YOUR CODE HERE
-    raise NotImplementedError
-
+  #   ### YOUR CODE HERE
+  #   raise NotImplementedError
+  def attention(
+    self,
+    query: torch.Tensor,                # (B, H, T, d_head)
+    key: torch.Tensor,                  # (B, H, T, d_head)
+    value: torch.Tensor,                # (B, H, T, d_head)
+    attention_mask: torch.Tensor,       # (B, T)，1=有效，0=padding
+    ) -> torch.Tensor:
+    """
+    Masked multi-head scaled dot-product attention (handout Eq.1):
+      Attention(Q,K,V) = Softmax(QK^T / sqrt(dk)) * V
+    步骤：
+      1. scores = Q @ K^T / sqrt(d_head)               # (B, H, T, T)
+      2. 应用 causal mask (upper-triangular, torch.triu)
+      3. 应用 attention_mask(padding 位置填 -inf)
+      4. softmax -> weights
+      5. output = weights @ V                           # (B, H, T, d_head)
+    Returns:
+        output: torch.Tensor, shape (B, H, T, d_head)
+    """
+    B = query.size(0)
+    H = query.size(1)
+    T = query.size(2)
+    d_head = query.size(3)
+    # scaled dot-product attention
+    scores = (query @ key.transpose(-1, -2)) / (d_head ** 0.5) # (B, H, T, T)
+    # causal mask
+    causal_mask = torch.triu(torch.ones(T, T), diagonal=1).bool()
+    scores = scores.masked_fill(causal_mask, float('-inf'))
+    # padding mask
+    pad_mask = attention_mask[:, None, None, :].bool()
+    scores = scores.masked_fill(~pad_mask, float('-inf'))
+    # softmax -> weights
+    weights = F.softmax(scores, dim=-1) # (B, H, T, T)
+    # output = weights @ V
+    output = weights @ value
+    return output
 
   def forward(self, hidden_states, attention_mask):
     """
