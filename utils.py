@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Union, Tuple, BinaryIO
 import os
 import sys
 import json
+import fnmatch
 import tempfile
 import copy
 from tqdm.auto import tqdm
@@ -17,7 +18,19 @@ import importlib_metadata
 import torch
 import torch.nn as nn
 from torch import Tensor
-import fnmatch
+
+
+def get_device(use_gpu: bool = False) -> torch.device:
+  """Pick accelerator: CUDA if available, else Apple MPS if available, else CPU."""
+  if not use_gpu:
+    return torch.device('cpu')
+  if torch.cuda.is_available():
+    return torch.device('cuda')
+  mps_backend = getattr(torch.backends, 'mps', None)
+  if mps_backend is not None and mps_backend.is_available():
+    return torch.device('mps')
+  return torch.device('cpu')
+
 
 __version__ = "4.0.0"
 _torch_version = importlib_metadata.version("torch")

@@ -76,4 +76,6 @@ class CausalSelfAttention(nn.Module):
     
     # Calculate the multi-head attention.
     attn_value = self.attention(query_layer, key_layer, value_layer, attention_mask)
+    # Merge heads back to (B, T, hidden_size) for attention_dense + residual in GPT2Layer.
+    attn_value = rearrange(attn_value, 'b h t d -> b t (h d)')
     return attn_value

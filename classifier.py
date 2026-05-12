@@ -4,6 +4,7 @@
 Trains and evaluates GPT2SentimentClassifier on SST and CFIMDB
 '''
 
+import os
 import random, numpy as np, argparse
 from types import SimpleNamespace
 import csv
@@ -16,6 +17,7 @@ from sklearn.metrics import f1_score, accuracy_score
 
 from models.gpt2 import GPT2Model
 from optimizer import AdamW
+from utils import get_device
 from tqdm import tqdm
 
 TQDM_DISABLE = False
@@ -26,10 +28,13 @@ def seed_everything(seed=11711):
   random.seed(seed)
   np.random.seed(seed)
   torch.manual_seed(seed)
-  torch.cuda.manual_seed(seed)
-  torch.cuda.manual_seed_all(seed)
-  torch.backends.cudnn.benchmark = False
-  torch.backends.cudnn.deterministic = True
+  if torch.cuda.is_available():
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+  if getattr(torch.backends, 'mps', None) and torch.backends.mps.is_available():
+    torch.mps.manual_seed(seed)
 
 
 class GPT2SentimentClassifier(torch.nn.Module):
@@ -244,7 +249,7 @@ def save_model(model, optimizer, args, config, filepath):
 
 
 def train(args):
-  device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+  device = get_device(args.use_gpu)
   # Create the data and its corresponding datasets and dataloader.
   train_data, num_labels = load_data(args.train, 'train')
   dev_data = load_data(args.dev, 'valid')
@@ -310,7 +315,7 @@ def train(args):
 
 def test(args):
   with torch.no_grad():
-    device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
+    device = get_device(args.use_gpu)
     saved = torch.load(args.filepath)
     config = saved['model_config']
     model = GPT2SentimentClassifier(config)
@@ -368,9 +373,13 @@ if __name__ == "__main__":
   args = get_args()
   seed_everything(args.seed)
 
+  ckpt_dir = 'checkpoints'
+  os.makedirs(ckpt_dir, exist_ok=True)
+  ckpt_prefix = args.fine_tune_mode
+
   print('Training Sentiment Classifier on SST...')
   config = SimpleNamespace(
-    filepath='sst-classifier.pt',
+    filepath=os.path.join(ckpt_dir, f'{ckpt_prefix}-sst-classifier.pt'),
     lr=args.lr,
     use_gpu=args.use_gpu,
     epochs=args.epochs,
@@ -391,7 +400,7 @@ if __name__ == "__main__":
 
   print('Training Sentiment Classifier on cfimdb...')
   config = SimpleNamespace(
-    filepath='cfimdb-classifier.pt',
+    filepath=os.path.join(ckpt_dir, f'{ckpt_prefix}-cfimdb-classifier.pt'),
     lr=args.lr,
     use_gpu=args.use_gpu,
     epochs=args.epochs,
