@@ -126,6 +126,8 @@ def train(args):
     model.train()
     train_loss = 0
     num_batches = 0
+    train_tok_correct = 0
+    train_tok_total = 0
     for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
       # Get the input and move it to the gpu (I do not recommend training this model on CPU).
       b_ids, b_mask, answer_token_ids = batch['token_ids'], batch['attention_mask'], batch['answer_token_ids']
@@ -142,8 +144,13 @@ def train(args):
 
       train_loss += loss.item()
       num_batches += 1
+      with torch.no_grad():
+        preds = logits.argmax(dim=-1)
+        train_tok_correct += (preds == answer_token_ids).sum().item()
+        train_tok_total += answer_token_ids.size(0)
 
     train_loss = train_loss / num_batches
+    train_acc = train_tok_correct / max(train_tok_total, 1)
 
     dev_acc, dev_f1, *_ = model_eval_paraphrase(para_dev_dataloader, model, device)
 
@@ -151,7 +158,7 @@ def train(args):
       best_dev_acc = dev_acc
       save_model(model, optimizer, args, args.filepath)
 
-    print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev acc :: {dev_acc :.3f}")
+    print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
 
 
 @torch.no_grad()
