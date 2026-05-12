@@ -30,6 +30,9 @@ class ParaphraseDetectionDataset(Dataset):
     self.p = args
     self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
     self.tokenizer.pad_token = self.tokenizer.eos_token
+    # Autograder / handout convention: next-token targets for "yes" vs "no" (BPE ids).
+    self.yes_token_id = self.tokenizer.encode('yes', add_special_tokens=False)[0]
+    self.no_token_id = self.tokenizer.encode('no', add_special_tokens=False)[0]
 
   def __len__(self):
     return len(self.dataset)
@@ -41,12 +44,16 @@ class ParaphraseDetectionDataset(Dataset):
     sent1 = [x[0] for x in all_data]
     sent2 = [x[1] for x in all_data]
     # labels = torch.LongTensor([x[2] for x in all_data])
-    labels = ['yes' if label == 1 else 'no' for label in [x[2] for x in all_data]]
-    labels = self.tokenizer(labels, return_tensors='pt', padding=True, truncation=True)['input_ids']
+    # Gold paraphrase labels (0/1) for dev metrics / sklearn. Training loss uses `answer_token_ids` (yes/no BPE).
+    labels = torch.LongTensor([x[2] for x in all_data])
+    answer_token_ids = torch.LongTensor(
+      [self.yes_token_id if x[2] == 1 else self.no_token_id for x in all_data]
+    )
     sent_ids = [x[3] for x in all_data]
 
-    cloze_style_sents = [f'Question 1: "{s1}"\nQuestion 2: "{s2}\nAre these questions asking the same thing?\n' for
-                         (s1, s2) in zip(sent1, sent2)]
+    # Match `ParaphraseDetectionTestDataset` and the handout cloze prompt so train and test see the same format.
+    cloze_style_sents = [f'Is "{s1}" a paraphrase of "{s2}"? Answer "yes" or "no": ' for (s1, s2) in
+                         zip(sent1, sent2)]
     encoding = self.tokenizer(cloze_style_sents, return_tensors='pt', padding=True, truncation=True)
 
     token_ids = torch.LongTensor(encoding['input_ids'])
@@ -56,6 +63,7 @@ class ParaphraseDetectionDataset(Dataset):
       'token_ids': token_ids,
       'attention_mask': attention_mask,
       'labels': labels,
+      'answer_token_ids': answer_token_ids,
       'sent_ids': sent_ids
     }
 
