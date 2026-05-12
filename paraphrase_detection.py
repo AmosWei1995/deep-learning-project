@@ -55,7 +55,9 @@ class ParaphraseGPT(nn.Module):
   def __init__(self, args):
     super().__init__()
     self.gpt = GPT2Model.from_pretrained(model=args.model_size, d=args.d, l=args.l, num_heads=args.num_heads)
-    self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
+    # Cloze-style: optimize next-token distribution via `GPT2Model.hidden_state_to_token` (see `forward`).
+    # Starter baseline used a 2-way head instead of the line below (kept verbatim for comparison):
+    # self.paraphrase_detection_head = nn.Linear(args.d, 2)  # Paraphrase detection has two outputs: 1 (yes) or 0 (no).
 
     # By default, fine-tune the full model.
     for param in self.gpt.parameters():
@@ -77,7 +79,7 @@ class ParaphraseGPT(nn.Module):
     ### YOUR CODE HERE
     outputs = self.gpt(input_ids, attention_mask)
     last_token = outputs['last_token']
-    logits = self.paraphrase_detection_head(last_token)
+    logits = self.gpt.hidden_state_to_token(last_token)
     return logits
 
 
@@ -124,25 +126,31 @@ def train(args):
     model.train()
     train_loss = 0
     num_batches = 0
+    train_tok_correct = 0
+    train_tok_total = 0
     for batch in tqdm(para_train_dataloader, desc=f'train-{epoch}', disable=TQDM_DISABLE):
       # Get the input and move it to the gpu (I do not recommend training this model on CPU).
-      b_ids, b_mask, labels = batch['token_ids'], batch['attention_mask'], batch['labels'].flatten()
+      b_ids, b_mask, answer_token_ids = batch['token_ids'], batch['attention_mask'], batch['answer_token_ids']
       b_ids = b_ids.to(device)
       b_mask = b_mask.to(device)
-      labels = labels.to(device)
+      answer_token_ids = answer_token_ids.to(device)
 
       # Compute the loss, gradients, and update the model's parameters.
       optimizer.zero_grad()
       logits = model(b_ids, b_mask)
-      preds = torch.argmax(logits, dim=1)
-      loss = F.cross_entropy(logits, labels, reduction='mean')
+      loss = F.cross_entropy(logits, answer_token_ids, reduction='mean')
       loss.backward()
       optimizer.step()
 
       train_loss += loss.item()
       num_batches += 1
+      with torch.no_grad():
+        preds = logits.argmax(dim=-1)
+        train_tok_correct += (preds == answer_token_ids).sum().item()
+        train_tok_total += answer_token_ids.size(0)
 
     train_loss = train_loss / num_batches
+    train_acc = train_tok_correct / max(train_tok_total, 1)
 
     dev_acc, dev_f1, *_ = model_eval_paraphrase(para_dev_dataloader, model, device)
 
@@ -150,7 +158,7 @@ def train(args):
       best_dev_acc = dev_acc
       save_model(model, optimizer, args, args.filepath)
 
-    print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev acc :: {dev_acc :.3f}")
+    print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, train acc :: {train_acc :.3f}, dev acc :: {dev_acc :.3f}")
 
 
 @torch.no_grad()
