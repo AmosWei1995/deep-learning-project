@@ -57,7 +57,7 @@ class CausalSelfAttention(nn.Module):
       raise ValueError(f"attention_mask must have 2 or 4 dims, got {attention_mask.dim()}")
     # softmax -> weights
     weights = F.softmax(scores, dim=-1) # (B, H, T, T)
-    # output = weights @ V
+    weights = self.dropout(weights)
     output = weights @ value # (B, H, T, d_head)
     return output
 
