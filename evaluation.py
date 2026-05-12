@@ -18,6 +18,18 @@ from datasets import (
 
 TQDM_DISABLE = False
 
+# Handout / Gradescope: answer tokens are GPT-2 BPE ids (yes=8505, no=3919).
+PARAPHRASE_YES_TOKEN_ID = 8505
+
+
+def _paraphrase_duplicate_preds_from_vocab_logits(logits_np, yes_id=PARAPHRASE_YES_TOKEN_ID):
+  """
+  `logits_np`: [batch, vocab_size] from `GPT2Model.hidden_state_to_token`.
+  Returns 0/1 `is_duplicate` style labels: 1 iff argmax token is the "yes" answer id (any other argmax -> 0).
+  """
+  pred_token = np.argmax(logits_np, axis=1).flatten()
+  return (pred_token == yes_id).astype(np.int64)
+
 
 @torch.no_grad()
 def model_eval_paraphrase(dataloader, model, device):
@@ -31,10 +43,10 @@ def model_eval_paraphrase(dataloader, model, device):
     b_mask = b_mask.to(device)
 
     logits = model(b_ids, b_mask).cpu().numpy()
-    preds = np.argmax(logits, axis=1).flatten()
+    preds = _paraphrase_duplicate_preds_from_vocab_logits(logits)
 
-    y_true.extend(labels)
-    y_pred.extend(preds)
+    y_true.extend(labels.detach().cpu().numpy().tolist())
+    y_pred.extend(preds.tolist())
     sent_ids.extend(b_sent_ids)
 
   f1 = f1_score(y_true, y_pred, average='macro')
@@ -54,9 +66,9 @@ def model_test_paraphrase(dataloader, model, device):
     b_mask = b_mask.to(device)
 
     logits = model(b_ids, b_mask).cpu().numpy()
-    preds = np.argmax(logits, axis=1).flatten()
+    preds = _paraphrase_duplicate_preds_from_vocab_logits(logits)
 
-    y_pred.extend(preds)
+    y_pred.extend(preds.tolist())
     sent_ids.extend(b_sent_ids)
 
   return y_pred, sent_ids
