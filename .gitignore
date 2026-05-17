@@ -44,3 +44,23 @@ conda-meta/
 *.ckpt
 *.bin
 *.h5
+*.safetensors
+*.onnx
+
+# Local pip installs (e.g. sandbox / PIP_TARGET)
+.pip_target/
+
+# Training checkpoints (weights also matched by *.pt)
+checkpoints/
+
+# Experiment tracking / secrets
+wandb/
+runs/
+.mlflow/
+.env
+.env.*
+!.env.example
+
+# Editors / temp
+*.swp
+*.swo
