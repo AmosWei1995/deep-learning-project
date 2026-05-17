@@ -52,7 +52,23 @@ from classifier import (
   GPT2SentimentClassifier, SentimentDataset,
   load_data, model_eval,
 )
-from modules.lora_linear import apply_lora, IMPLEMENTED_INIT_METHODS
+from modules.lora_linear import apply_lora, init_lora
+
+def _try_import(module_name, fn_name):
+  try:
+    import importlib
+    return getattr(importlib.import_module(module_name), fn_name)
+  except (ImportError, AttributeError):
+    return None
+
+_init_pissa = _try_import('lora_pissa', 'init_pissa')
+_init_loftq = _try_import('lora_loftq', 'init_loftq')
+
+INIT_REGISTRY = {'lora': init_lora}
+if _init_pissa is not None:
+  INIT_REGISTRY['pissa'] = _init_pissa
+if _init_loftq is not None:
+  INIT_REGISTRY['loftq'] = _init_loftq
 from optimizer import AdamW
 from utils import get_device
 
@@ -124,7 +140,9 @@ def compute_dev_loss(model, dataloader, device, batch_size):
 def load_results():
   if os.path.exists(RESULTS_PATH):
     with open(RESULTS_PATH) as f:
-      return json.load(f)
+      content = f.read().strip()
+      if content:
+        return json.loads(content)
   return []
 
 
@@ -192,6 +210,9 @@ def save_preds_csv(path, sent_ids, preds, true_labels):
 
 
 def run_sentiment(args):
+  global RESULTS_PATH
+  if args.smoke:
+    RESULTS_PATH = RESULTS_PATH.replace('.json', '_smoke.json')
   device  = get_device(args.use_gpu)
   if args.rerun and os.path.exists(RESULTS_PATH):
     backup = RESULTS_PATH.replace('.json', '_backup.json')
@@ -201,8 +222,8 @@ def run_sentiment(args):
 
   batch_size = args.batch_size or FIXED_CONFIG['batch_size']
   init_methods = ['lora'] if args.smoke else ([args.init] if args.init else LORA_GRID['init_method'])
-  skipped = [m for m in init_methods if m not in IMPLEMENTED_INIT_METHODS]
-  init_methods = [m for m in init_methods if m in IMPLEMENTED_INIT_METHODS]
+  skipped = [m for m in init_methods if m not in INIT_REGISTRY]
+  init_methods = [m for m in init_methods if m in INIT_REGISTRY]
   if skipped:
     print(f'[skip] init_method not yet implemented, skipping: {skipped}')
   ranks  = [4] if args.smoke else ([args.rank] if args.rank else LORA_GRID['rank'])
@@ -259,7 +280,7 @@ def run_sentiment(args):
           model,
           rank=rank,
           alpha=LORA_GRID['alpha'],
-          init_method=init_method,
+          init_fn=INIT_REGISTRY[init_method],
           target_modules=['query', 'key', 'value'],
         )
         model = model.to(device)

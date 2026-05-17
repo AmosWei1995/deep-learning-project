@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
-
-IMPLEMENTED_INIT_METHODS = {'lora'}
+from typing import Callable, Optional
 
 
 class LoRALinear(nn.Module):
@@ -10,12 +9,9 @@ class LoRALinear(nn.Module):
     original_linear: nn.Linear,
     rank: int = 8,
     alpha: float = 16.0,
-    init_method: str = 'lora',
+    init_fn: Optional[Callable] = None,
   ):
     super().__init__()
-    if init_method not in IMPLEMENTED_INIT_METHODS:
-      raise NotImplementedError(f"init_method='{init_method}' is not yet implemented")
-
     self.original_linear = original_linear
     for p in self.original_linear.parameters():
       p.requires_grad = False
@@ -28,14 +24,14 @@ class LoRALinear(nn.Module):
     self.A = nn.Parameter(torch.empty(in_features, rank))
     self.B = nn.Parameter(torch.empty(rank, out_features))
 
-    if init_method == 'lora':
-      init_lora(self.A, self.B)
+    fn = init_fn if init_fn is not None else init_lora
+    fn(self.A, self.B, original_linear.weight, rank=rank)
 
   def forward(self, x: torch.Tensor) -> torch.Tensor:
     return self.original_linear(x) + (self.alpha / self.rank) * (x @ self.A @ self.B)
 
 
-def init_lora(A: torch.Tensor, B: torch.Tensor, **kwargs) -> None:
+def init_lora(A: torch.Tensor, B: torch.Tensor, weight=None, rank=None, **kwargs) -> None:
     nn.init.normal_(A)
     nn.init.zeros_(B)
 
@@ -44,7 +40,7 @@ def apply_lora(
   model: nn.Module,
   rank: int = 8,
   alpha: float = 16.0,
-  init_method: str = 'lora',
+  init_fn: Optional[Callable] = None,
   target_modules: list = ['q_proj', 'k_proj', 'v_proj', 'out_proj'],
 ) -> nn.Module:
   for name, module in model.named_modules():
@@ -52,5 +48,5 @@ def apply_lora(
       if hasattr(module, attr_name):
         child = getattr(module, attr_name)
         if isinstance(child, nn.Linear):
-          setattr(module, attr_name, LoRALinear(child, rank, alpha, init_method))
+          setattr(module, attr_name, LoRALinear(child, rank, alpha, init_fn))
   return model
