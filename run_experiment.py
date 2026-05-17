@@ -1,35 +1,40 @@
 #!/usr/bin/env python3
 
 '''
-跑 LoRA 对比实验（lora / pissa / loftq × rank 4/8/16 = 9组）。
-实验方案见 docs/experiment_lora_sentiment.md。
+LoRA comparison experiments (lora / pissa / loftq x rank 4/8/16 = 9 runs).
+See docs/experiment_lora_sentiment.md for the full experiment plan.
 
-常用命令
---------
-# 先在本地跑一下确认代码没问题（只用少量数据，结果写 results_smoke.json）
+Usage
+-----
+# Smoke test locally with a small subset of data (results written to results_smoke.json)
 python3 run_experiment.py --task sentiment --smoke
 
-# GPU 上跑全部 9 组
+# Run all configurations on GPU (SST + CFIMDB)
 python3 run_experiment.py --task sentiment --use_gpu
 
-# 只跑某一组
-python3 run_experiment.py --task sentiment --use_gpu --init pissa --rank 8
+# Run only one dataset
+python3 run_experiment.py --task sentiment --use_gpu --dataset sst
+python3 run_experiment.py --task sentiment --use_gpu --dataset cfimdb
 
-# 重跑（旧 results.json 自动备份成 results_backup.json）
+# Run a single configuration
+python3 run_experiment.py --task sentiment --use_gpu --dataset sst --init lora --rank 8
+
+# Force rerun (old results.json is backed up as results_backup.json)
 python3 run_experiment.py --task sentiment --use_gpu --rerun
 
-输出文件
---------
-predictions/results.json                          汇总结果（每组一条）
-predictions/results_smoke.json                    smoke 测试结果，不影响正式结果
-predictions/lora/sentiment_{init}_rank{rank}_dev.csv  每组的 dev 预测
-checkpoints/lora/sentiment_{init}_rank{rank}.pt   每组最佳 epoch 的权重
+Output files
+------------
+predictions/results.json                                    aggregated results (one entry per run)
+predictions/results_smoke.json                              smoke-test results, does not affect main results
+predictions/lora/{dataset}_{init}_rank{rank}_dev.csv        per-run dev predictions
+predictions/lora/{dataset}_{init}_rank{rank}_test.csv       per-run test predictions (if test set exists)
+checkpoints/lora/{dataset}_{init}_rank{rank}.pt             best-epoch weights per run
 
-待实现（见 schedule.md）
---------
-python3 run_experiment.py --task ablation   --use_gpu  
-python3 run_experiment.py --task sonnet     --use_gpu  
-python3 run_experiment.py --task paraphrase --use_gpu  
+TODO (see schedule.md)
+----------------------
+python3 run_experiment.py --task ablation   --use_gpu
+python3 run_experiment.py --task sonnet     --use_gpu
+python3 run_experiment.py --task paraphrase --use_gpu
 
 '''
 
@@ -47,7 +52,7 @@ from classifier import (
   GPT2SentimentClassifier, SentimentDataset,
   load_data, model_eval,
 )
-from modules.lora_linear import apply_lora
+from modules.lora_linear import apply_lora, IMPLEMENTED_INIT_METHODS
 from optimizer import AdamW
 from utils import get_device
 
@@ -65,6 +70,19 @@ LORA_GRID = {
   'init_method': ['lora', 'pissa', 'loftq'],
   'rank':        [4, 8, 16],
   'alpha':       16.0,
+}
+
+SENTIMENT_DATASETS = {
+  'sst': {
+    'train': 'data/ids-sst-train.csv',
+    'dev':   'data/ids-sst-dev.csv',
+    'test':  'data/ids-sst-test.csv',
+  },
+  'cfimdb': {
+    'train': 'data/ids-cfimdb-train.csv',
+    'dev':   'data/ids-cfimdb-dev.csv',
+    'test':  'data/ids-cfimdb-test.csv',
+  },
 }
 
 
@@ -139,168 +157,214 @@ def train_one_epoch(model, dataloader, optimizer, device, batch_size):
   return total_loss / n, correct / total
 
 
+def get_device_name(device):
+  if device.type == 'cuda':
+    return torch.cuda.get_device_name(0)
+  if device.type == 'mps':
+    import subprocess
+    for key in ['machdep.cpu.brand_string', 'hw.model']:
+      try:
+        name = subprocess.check_output(['sysctl', '-n', key],
+                                       stderr=subprocess.DEVNULL).decode().strip()
+        if name:
+          return f'Apple MPS ({name})'
+      except Exception:
+        pass
+    return 'Apple MPS'
+  import platform, subprocess
+  for key in ['machdep.cpu.brand_string', 'hw.model']:
+    try:
+      name = subprocess.check_output(['sysctl', '-n', key],
+                                     stderr=subprocess.DEVNULL).decode().strip()
+      if name:
+        return f'CPU ({name})'
+    except Exception:
+      pass
+  return f'CPU ({platform.processor() or platform.machine()})'
+
+
+def save_preds_csv(path, sent_ids, preds, true_labels):
+  os.makedirs(os.path.dirname(path), exist_ok=True)
+  with open(path, 'w') as f:
+    f.write('id\tpredicted\ttrue\n')
+    for sid, p, t in zip(sent_ids, preds, true_labels):
+      f.write(f'{sid}\t{p}\t{t}\n')
+
+
 def run_sentiment(args):
-  device = get_device(args.use_gpu)
+  device  = get_device(args.use_gpu)
   if args.rerun and os.path.exists(RESULTS_PATH):
     backup = RESULTS_PATH.replace('.json', '_backup.json')
     os.rename(RESULTS_PATH, backup)
-    print(f'旧结果已备份至 {backup}')
+    print(f'Old results backed up to {backup}')
   results = load_results()
 
-  train_data, num_labels = load_data('data/ids-sst-train.csv', 'train')
-  dev_data = load_data('data/ids-sst-dev.csv', 'valid')
-
-  if args.smoke:
-    train_data = train_data[:64]
-    dev_data   = dev_data[:32]
-
-  train_dataset = SentimentDataset(train_data, args)
-  dev_dataset   = SentimentDataset(dev_data,   args)
-  train_loader  = DataLoader(train_dataset, shuffle=True,  batch_size=FIXED_CONFIG['batch_size'],
-                             collate_fn=train_dataset.collate_fn)
-  dev_loader    = DataLoader(dev_dataset,   shuffle=False, batch_size=FIXED_CONFIG['batch_size'],
-                             collate_fn=dev_dataset.collate_fn)
-
+  batch_size = args.batch_size or FIXED_CONFIG['batch_size']
   init_methods = ['lora'] if args.smoke else ([args.init] if args.init else LORA_GRID['init_method'])
-  ranks        = [4]     if args.smoke else ([args.rank] if args.rank else LORA_GRID['rank'])
-  epochs       = 10      if args.smoke else FIXED_CONFIG['epochs']
+  skipped = [m for m in init_methods if m not in IMPLEMENTED_INIT_METHODS]
+  init_methods = [m for m in init_methods if m in IMPLEMENTED_INIT_METHODS]
+  if skipped:
+    print(f'[skip] init_method not yet implemented, skipping: {skipped}')
+  ranks  = [4] if args.smoke else ([args.rank] if args.rank else LORA_GRID['rank'])
+  epochs = 10  if args.smoke else (args.epochs or FIXED_CONFIG['epochs'])
 
-  for init_method in init_methods:
-    for rank in ranks:
-      if is_done(results, 'sentiment', 'sst', init_method, rank) and not args.rerun:
-        print(f'\n=== sentiment | init={init_method} | rank={rank} — 已完成，跳过 ===')
-        continue
+  datasets_to_run = [args.dataset] if args.dataset else list(SENTIMENT_DATASETS.keys())
 
-      seed_everything(FIXED_CONFIG['seed'])
-      t_start = time.time()
-      print(f'\n=== sentiment | init={init_method} | rank={rank} ===')
+  for dataset_name in datasets_to_run:
+    ds_cfg = SENTIMENT_DATASETS[dataset_name]
 
-      config = SimpleNamespace(
-        hidden_dropout_prob=0.1,
-        num_labels=num_labels,
-        hidden_size=768,
-        data_dir='.',
-        fine_tune_mode='full-model',
-      )
-      model = GPT2SentimentClassifier(config)
-      # 冻结整个 GPT，只保留分类头和后续 LoRA 的 A、B 可训练
-      for param in model.gpt.parameters():
-        param.requires_grad = False
-      model = apply_lora(
-        model,
-        rank=rank,
-        alpha=LORA_GRID['alpha'],
-        init_method=init_method,
-        target_modules=['query', 'key', 'value'],
-      )
-      model = model.to(device)
+    train_data, num_labels = load_data(ds_cfg['train'], 'train')
+    dev_data               = load_data(ds_cfg['dev'],   'valid')
+    test_path = ds_cfg.get('test', '')
+    has_test  = bool(test_path) and os.path.exists(test_path) and not args.smoke
+    test_data = load_data(test_path, 'valid') if has_test else None
 
-      trainable   = sum(p.numel() for p in model.parameters() if p.requires_grad)
-      total_params = sum(p.numel() for p in model.parameters())
-      print(f'  可训练参数: {trainable:,} / {total_params:,} ({100*trainable/total_params:.2f}%)')
+    if args.smoke:
+      train_data = train_data[:64]
+      dev_data   = dev_data[:32]
 
-      optimizer = AdamW(
-        filter(lambda p: p.requires_grad, model.parameters()),
-        lr=FIXED_CONFIG['lr'],
-      )
+    train_dataset = SentimentDataset(train_data, args)
+    dev_dataset   = SentimentDataset(dev_data,   args)
+    train_loader  = DataLoader(train_dataset, shuffle=True,  batch_size=batch_size,
+                               collate_fn=train_dataset.collate_fn)
+    dev_loader    = DataLoader(dev_dataset,   shuffle=False, batch_size=batch_size,
+                               collate_fn=dev_dataset.collate_fn)
+    if has_test:
+      test_dataset = SentimentDataset(test_data, args)
+      test_loader  = DataLoader(test_dataset, shuffle=False, batch_size=batch_size,
+                                collate_fn=test_dataset.collate_fn)
 
-      os.makedirs('checkpoints/lora', exist_ok=True)
-      ckpt_path = f'checkpoints/lora/sentiment_{init_method}_rank{rank}.pt'
+    for init_method in init_methods:
+      for rank in ranks:
+        if is_done(results, 'sentiment', dataset_name, init_method, rank) and not args.rerun:
+          print(f'\n=== sentiment | {dataset_name} | init={init_method} | rank={rank} — already done, skipping ===')
+          continue
 
-      best_acc, best_loss, best_preds, best_true, best_sent_ids = 0.0, float('inf'), [], [], []
-      curve = {'train_loss': [], 'train_acc': [], 'dev_loss': [], 'dev_acc': []}
-      for epoch in range(epochs):
-        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, device, FIXED_CONFIG['batch_size'])
-        dev_acc, _, preds, true, _, sent_ids = model_eval(dev_loader, model, device)
-        dev_loss = compute_dev_loss(model, dev_loader, device, FIXED_CONFIG['batch_size'])
-        curve['train_loss'].append(round(train_loss, 4))
-        curve['train_acc'].append(round(train_acc, 4))
-        curve['dev_loss'].append(round(dev_loss, 4))
-        curve['dev_acc'].append(round(dev_acc, 4))
-        if dev_acc > best_acc:
-          best_acc, best_loss = dev_acc, train_loss
-          best_preds, best_true, best_sent_ids = preds, true, sent_ids
-          if not args.smoke:
-            torch.save({'model': model.state_dict(), 'epoch': epoch,
-                        'dev_acc': dev_acc, 'init_method': init_method, 'rank': rank}, ckpt_path)
-        print(f'  epoch {epoch}: train_loss={train_loss:.4f}  train_acc={train_acc:.4f}  dev_loss={dev_loss:.4f}  dev_acc={dev_acc:.4f}')
+        seed_everything(FIXED_CONFIG['seed'])
+        t_start = time.time()
+        print(f'\n=== sentiment | {dataset_name} | init={init_method} | rank={rank} ===')
 
-      pred_path = f'predictions/lora/sentiment_{init_method}_rank{rank}_dev.csv'
-      os.makedirs('predictions/lora', exist_ok=True)
-      with open(pred_path, 'w') as f:
-        f.write('id\tpredicted\ttrue\n')
-        for sid, p, t in zip(best_sent_ids, best_preds, best_true):
-          f.write(f'{sid}\t{p}\t{t}\n')
+        config = SimpleNamespace(
+          hidden_dropout_prob=0.1,
+          num_labels=num_labels,
+          hidden_size=768,
+          data_dir='.',
+          fine_tune_mode='full-model',
+        )
+        model = GPT2SentimentClassifier(config)
+        # freeze the entire GPT backbone; only the classifier head and LoRA A/B are trainable
+        for param in model.gpt.parameters():
+          param.requires_grad = False
+        model = apply_lora(
+          model,
+          rank=rank,
+          alpha=LORA_GRID['alpha'],
+          init_method=init_method,
+          target_modules=['query', 'key', 'value'],
+        )
+        model = model.to(device)
 
-      elapsed = time.time() - t_start
-      if device.type == 'cuda':
-        device_name = torch.cuda.get_device_name(0)
-      elif device.type == 'mps':
-        import subprocess
-        try:
-          chip = subprocess.check_output(
-            ['sysctl', '-n', 'machdep.cpu.brand_string'], stderr=subprocess.DEVNULL
-          ).decode().strip()
-          if not chip:
-            chip = subprocess.check_output(
-              ['sysctl', '-n', 'hw.model'], stderr=subprocess.DEVNULL
-            ).decode().strip()
-        except Exception:
-          chip = 'Apple Silicon'
-        device_name = f'Apple MPS ({chip})'
-      else:
-        import platform, subprocess
-        cpu = ''
-        for sysctl_key in ['machdep.cpu.brand_string', 'hw.model']:
-          try:
-            cpu = subprocess.check_output(
-              ['sysctl', '-n', sysctl_key], stderr=subprocess.DEVNULL
-            ).decode().strip()
-            if cpu:
-              break
-          except Exception:
-            pass
-        if not cpu:
-          cpu = platform.processor() or platform.machine()
-        device_name = f'CPU ({cpu})'
+        trainable    = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total_params = sum(p.numel() for p in model.parameters())
+        print(f'  trainable params: {trainable:,} / {total_params:,} ({100*trainable/total_params:.2f}%)')
 
-      best_f1 = round(f1_score(best_true, best_preds, average='macro'), 4)
+        optimizer = AdamW(
+          filter(lambda p: p.requires_grad, model.parameters()),
+          lr=FIXED_CONFIG['lr'],
+        )
 
-      entry = {
-        'task':             'sentiment',
-        'dataset':          'sst',
-        'train_size':       len(train_data),
-        'dev_size':         len(dev_data),
-        'init_method':      init_method,
-        'rank':             rank,
-        'dev_acc':          round(best_acc,  4),
-        'dev_f1':           best_f1,
-        'train_loss':       round(best_loss, 4),
-        'trainable_params': trainable,
-        'total_params':     total_params,
-        'trainable_pct':    round(100 * trainable / total_params, 2),
-        'elapsed_min':      round(elapsed / 60, 1),
-        'device':           device_name,
-        'timestamp':        datetime.now().strftime('%Y-%m-%d %H:%M'),
-        'pred_file':        pred_path,
-        'curve':            curve,
-      }
-      if args.smoke:
-        smoke_path = RESULTS_PATH.replace('.json', '_smoke.json')
-        smoke_results = []
-        if os.path.exists(smoke_path):
-          with open(smoke_path) as f:
-            content = f.read().strip()
-            if content:
-              smoke_results = json.loads(content)
-        smoke_results.append(entry)
-        with open(smoke_path, 'w') as f:
-          json.dump(smoke_results, f, indent=2)
-        print(f'  smoke 结果已写入 {smoke_path}')
-      else:
-        results.append(entry)
-        save_results(results)
-      print(f'  => best dev acc: {best_acc:.4f}  predictions -> {pred_path}')
+        os.makedirs('checkpoints/lora', exist_ok=True)
+        ckpt_path = f'checkpoints/lora/sentiment_{dataset_name}_{init_method}_rank{rank}.pt'
+
+        best_acc, best_loss, best_preds, best_true, best_sent_ids = 0.0, float('inf'), [], [], []
+        best_epoch = 0
+        curve = {'train_loss': [], 'train_acc': [], 'dev_loss': [], 'dev_acc': []}
+        for epoch in range(epochs):
+          train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, device, batch_size)
+          dev_acc, _, preds, true, _, sent_ids = model_eval(dev_loader, model, device)
+          dev_loss = compute_dev_loss(model, dev_loader, device, batch_size)
+          curve['train_loss'].append(round(train_loss, 4))
+          curve['train_acc'].append(round(train_acc, 4))
+          curve['dev_loss'].append(round(dev_loss, 4))
+          curve['dev_acc'].append(round(dev_acc, 4))
+          if dev_acc > best_acc:
+            best_acc, best_loss, best_epoch = dev_acc, train_loss, epoch
+            best_preds, best_true, best_sent_ids = preds, true, sent_ids
+            if not args.smoke:
+              torch.save({'model': model.state_dict(), 'epoch': epoch,
+                          'dev_acc': dev_acc, 'init_method': init_method, 'rank': rank}, ckpt_path)
+          print(f'  epoch {epoch}: train_loss={train_loss:.4f}  train_acc={train_acc:.4f}  dev_loss={dev_loss:.4f}  dev_acc={dev_acc:.4f}')
+
+        os.makedirs('predictions/lora', exist_ok=True)
+        dev_pred_path = f'predictions/lora/sentiment_{dataset_name}_{init_method}_rank{rank}_dev.csv'
+        save_preds_csv(dev_pred_path, best_sent_ids, best_preds, best_true)
+
+        # --- test evaluation ---
+        test_acc = test_f1 = test_pred_path = None
+        if has_test and os.path.exists(ckpt_path):
+          ckpt = torch.load(ckpt_path, map_location=device)
+          model.load_state_dict(ckpt['model'])
+          test_acc_val, _, test_preds, test_true, _, test_sent_ids = model_eval(test_loader, model, device)
+          test_pred_path = f'predictions/lora/sentiment_{dataset_name}_{init_method}_rank{rank}_test.csv'
+          save_preds_csv(test_pred_path, test_sent_ids, test_preds, test_true)
+          test_acc = round(test_acc_val, 4)
+          test_f1  = round(f1_score(test_true, test_preds, average='macro'), 4)
+          print(f'  test  acc={test_acc:.4f}  f1={test_f1:.4f}  predictions -> {test_pred_path}')
+
+        elapsed    = time.time() - t_start
+        best_f1    = round(f1_score(best_true, best_preds, average='macro'), 4)
+        device_name = get_device_name(device)
+
+        entry = {
+          'task':             'sentiment',
+          'dataset':          dataset_name,
+          'train_size':       len(train_data),
+          'dev_size':         len(dev_data),
+          'test_size':        len(test_data) if test_data is not None else None,
+          'hparams': {
+            'init_method':  init_method,
+            'rank':         rank,
+            'alpha':        LORA_GRID['alpha'],
+            'lr':           FIXED_CONFIG['lr'],
+            'batch_size':   batch_size,
+            'epochs':       epochs,
+            'seed':         FIXED_CONFIG['seed'],
+            'model':        FIXED_CONFIG['model_size'],
+          },
+          'init_method':      init_method,
+          'rank':             rank,
+          'best_epoch':       best_epoch,
+          'dev_acc':          round(best_acc,  4),
+          'dev_f1':           best_f1,
+          'test_acc':         test_acc,
+          'test_f1':          test_f1,
+          'train_loss':       round(best_loss, 4),
+          'trainable_params': trainable,
+          'total_params':     total_params,
+          'trainable_pct':    round(100 * trainable / total_params, 2),
+          'elapsed_min':      round(elapsed / 60, 1),
+          'device':           device_name,
+          'timestamp':        datetime.now().strftime('%Y-%m-%d %H:%M'),
+          'dev_pred_file':    dev_pred_path,
+          'test_pred_file':   test_pred_path,
+          'curve':            curve,
+        }
+        if args.smoke:
+          smoke_path = RESULTS_PATH.replace('.json', '_smoke.json')
+          smoke_results = []
+          if os.path.exists(smoke_path):
+            with open(smoke_path) as f:
+              content = f.read().strip()
+              if content:
+                smoke_results = json.loads(content)
+          smoke_results.append(entry)
+          with open(smoke_path, 'w') as f:
+            json.dump(smoke_results, f, indent=2)
+          print(f'  smoke results written to {smoke_path}')
+        else:
+          results.append(entry)
+          save_results(results)
+        print(f'  => best dev acc: {best_acc:.4f}  predictions -> {dev_pred_path}')
 
 
 def get_args():
@@ -309,13 +373,19 @@ def get_args():
                       default='sentiment')
   parser.add_argument('--use_gpu', action='store_true')
   parser.add_argument('--smoke', action='store_true',
-                      help='快速冒烟测试：只用少量数据跑 10 epoch，验证代码流程')
+                      help='smoke test: run with a small data subset to verify the pipeline')
   parser.add_argument('--rerun', action='store_true',
-                      help='忽略已有结果，强制重跑所有组')
+                      help='ignore existing results and rerun all configurations')
+  parser.add_argument('--dataset', choices=list(SENTIMENT_DATASETS.keys()), default=None,
+                      help='run only the specified dataset (default: all)')
   parser.add_argument('--init', choices=['lora', 'pissa', 'loftq'], default=None,
-                      help='只跑指定的 init_method')
+                      help='run only the specified init_method')
   parser.add_argument('--rank', type=int, choices=[4, 8, 16], default=None,
-                      help='只跑指定的 rank')
+                      help='run only the specified rank')
+  parser.add_argument('--epochs', type=int, default=None,
+                      help=f'number of training epochs (default: {FIXED_CONFIG["epochs"]}; ignored in --smoke mode)')
+  parser.add_argument('--batch_size', type=int, default=None,
+                      help=f'training batch size (default: {FIXED_CONFIG["batch_size"]})')
   return parser.parse_args()
 
 

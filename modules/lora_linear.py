@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+IMPLEMENTED_INIT_METHODS = {'lora'}
+
 
 class LoRALinear(nn.Module):
   def __init__(
@@ -11,6 +13,9 @@ class LoRALinear(nn.Module):
     init_method: str = 'lora',
   ):
     super().__init__()
+    if init_method not in IMPLEMENTED_INIT_METHODS:
+      raise NotImplementedError(f"init_method='{init_method}' is not yet implemented")
+
     self.original_linear = original_linear
     for p in self.original_linear.parameters():
       p.requires_grad = False
