@@ -101,6 +101,11 @@ SENTIMENT_DATASETS = {
   },
 }
 
+SENTIMENT_TARGET_DEV_ACC = {
+  'sst': 0.516,
+  'cfimdb': 0.976,
+}
+
 
 def seed_everything(seed):
   random.seed(seed)
@@ -221,12 +226,12 @@ def run_sentiment(args):
   results = load_results()
 
   batch_size = args.batch_size or FIXED_CONFIG['batch_size']
-  init_methods = ['lora'] if args.smoke else ([args.init] if args.init else LORA_GRID['init_method'])
+  init_methods = ([args.init] if args.init else ['lora']) if args.smoke else ([args.init] if args.init else LORA_GRID['init_method'])
   skipped = [m for m in init_methods if m not in INIT_REGISTRY]
   init_methods = [m for m in init_methods if m in INIT_REGISTRY]
   if skipped:
     print(f'[skip] init_method not yet implemented, skipping: {skipped}')
-  ranks  = [4] if args.smoke else ([args.rank] if args.rank else LORA_GRID['rank'])
+  ranks  = ([args.rank] if args.rank else [4]) if args.smoke else ([args.rank] if args.rank else LORA_GRID['rank'])
   epochs = 10  if args.smoke else (args.epochs or FIXED_CONFIG['epochs'])
 
   datasets_to_run = [args.dataset] if args.dataset else list(SENTIMENT_DATASETS.keys())
@@ -264,6 +269,8 @@ def run_sentiment(args):
         seed_everything(FIXED_CONFIG['seed'])
         t_start = time.time()
         print(f'\n=== sentiment | {dataset_name} | init={init_method} | rank={rank} ===')
+        if device.type == 'cuda':
+          torch.cuda.reset_peak_memory_stats(device)
 
         config = SimpleNamespace(
           hidden_dropout_prob=0.1,
@@ -299,6 +306,8 @@ def run_sentiment(args):
 
         best_acc, best_loss, best_preds, best_true, best_sent_ids = 0.0, float('inf'), [], [], []
         best_epoch = 0
+        steps_to_target = None
+        target_dev_acc = SENTIMENT_TARGET_DEV_ACC.get(dataset_name)
         curve = {'train_loss': [], 'train_acc': [], 'dev_loss': [], 'dev_acc': []}
         for epoch in range(epochs):
           train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, device, batch_size)
@@ -308,6 +317,8 @@ def run_sentiment(args):
           curve['train_acc'].append(round(train_acc, 4))
           curve['dev_loss'].append(round(dev_loss, 4))
           curve['dev_acc'].append(round(dev_acc, 4))
+          if target_dev_acc is not None and steps_to_target is None and dev_acc >= target_dev_acc:
+            steps_to_target = (epoch + 1) * len(train_loader)
           if dev_acc > best_acc:
             best_acc, best_loss, best_epoch = dev_acc, train_loss, epoch
             best_preds, best_true, best_sent_ids = preds, true, sent_ids
@@ -335,6 +346,7 @@ def run_sentiment(args):
         elapsed    = time.time() - t_start
         best_f1    = round(f1_score(best_true, best_preds, average='macro'), 4)
         device_name = get_device_name(device)
+        peak_vram_mb = round(torch.cuda.max_memory_allocated(device) / (1024 ** 2), 1) if device.type == 'cuda' else None
 
         entry = {
           'task':             'sentiment',
@@ -363,6 +375,9 @@ def run_sentiment(args):
           'trainable_params': trainable,
           'total_params':     total_params,
           'trainable_pct':    round(100 * trainable / total_params, 2),
+          'target_dev_acc':   target_dev_acc,
+          'steps_to_target_acc': steps_to_target,
+          'peak_vram_mb':     peak_vram_mb,
           'elapsed_min':      round(elapsed / 60, 1),
           'device':           device_name,
           'timestamp':        datetime.now().strftime('%Y-%m-%d %H:%M'),
@@ -371,7 +386,7 @@ def run_sentiment(args):
           'curve':            curve,
         }
         if args.smoke:
-          smoke_path = RESULTS_PATH.replace('.json', '_smoke.json')
+          smoke_path = RESULTS_PATH
           smoke_results = []
           if os.path.exists(smoke_path):
             with open(smoke_path) as f:
