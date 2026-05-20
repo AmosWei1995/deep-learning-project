@@ -1,0 +1,254 @@
+{
+  "experiment": "exp3_quant_svd",
+  "baseline": {
+    "source": "/home/ray/yuheng/Dsinai/project/deep-learning-project/predictions/results.json",
+    "dataset": "sst",
+    "dev_acc": 0.5186,
+    "rank": 4,
+    "alpha": 16.0,
+    "seed": 11711,
+    "lr": 1e-05,
+    "batch_size": 8,
+    "epochs": 10,
+    "model": "gpt2",
+    "target_modules": [
+      "query",
+      "key",
+      "value"
+    ]
+  },
+  "runs": [
+    {
+      "task": "sentiment",
+      "dataset": "sst",
+      "method": "qlora",
+      "bits": 4,
+      "rank": 4,
+      "alpha": 16.0,
+      "target_modules": [
+        "query",
+        "key",
+        "value"
+      ],
+      "hparams": {
+        "seed": 11711,
+        "epochs": 2,
+        "lr": 1e-05,
+        "batch_size": 8,
+        "model": "gpt2"
+      },
+      "train_size": 64,
+      "dev_size": 32,
+      "test_size": null,
+      "best_epoch": 0,
+      "dev_acc": 0.4062,
+      "dev_f1": 0.1926,
+      "test_acc": null,
+      "test_f1": null,
+      "train_loss": 2.0369,
+      "trainable_params": 225029,
+      "total_params": 103994117,
+      "trainable_pct": 0.22,
+      "peak_vram_gb": 0.803,
+      "degradation": -0.1123,
+      "degradation_pct": -21.65,
+      "elapsed_min": 0.9,
+      "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+      "timestamp": "2026-05-19 16:48",
+      "dev_pred_file": "/home/ray/yuheng/Dsinai/project/deep-learning-project/results/preds/sentiment_sst_qlora_4bit_rank4_dev.csv",
+      "test_pred_file": null,
+      "curve": {
+        "train_loss": [
+          2.0369,
+          1.9045
+        ],
+        "train_acc": [
+          0.3906,
+          0.375
+        ],
+        "dev_loss": [
+          1.6665,
+          1.5631
+        ],
+        "dev_acc": [
+          0.4062,
+          0.4062
+        ]
+      }
+    },
+    {
+      "task": "sentiment",
+      "dataset": "sst",
+      "method": "qlora",
+      "bits": 2,
+      "rank": 4,
+      "alpha": 16.0,
+      "target_modules": [
+        "query",
+        "key",
+        "value"
+      ],
+      "hparams": {
+        "seed": 11711,
+        "epochs": 2,
+        "lr": 1e-05,
+        "batch_size": 8,
+        "model": "gpt2"
+      },
+      "train_size": 64,
+      "dev_size": 32,
+      "test_size": null,
+      "best_epoch": 1,
+      "dev_acc": 0.5625,
+      "dev_f1": 0.3923,
+      "test_acc": null,
+      "test_f1": null,
+      "train_loss": 1.6534,
+      "trainable_params": 225029,
+      "total_params": 103994117,
+      "trainable_pct": 0.22,
+      "peak_vram_gb": 0.803,
+      "degradation": 0.0439,
+      "degradation_pct": 8.47,
+      "elapsed_min": 0.1,
+      "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+      "timestamp": "2026-05-19 16:48",
+      "dev_pred_file": "/home/ray/yuheng/Dsinai/project/deep-learning-project/results/preds/sentiment_sst_qlora_2bit_rank4_dev.csv",
+      "test_pred_file": null,
+      "curve": {
+        "train_loss": [
+          2.073,
+          1.6534
+        ],
+        "train_acc": [
+          0.2344,
+          0.2969
+        ],
+        "dev_loss": [
+          1.1036,
+          1.1243
+        ],
+        "dev_acc": [
+          0.5312,
+          0.5625
+        ]
+      }
+    },
+    {
+      "task": "sentiment",
+      "dataset": "sst",
+      "method": "loftq",
+      "bits": 4,
+      "rank": 4,
+      "alpha": 16.0,
+      "target_modules": [
+        "query",
+        "key",
+        "value"
+      ],
+      "hparams": {
+        "seed": 11711,
+        "epochs": 2,
+        "lr": 1e-05,
+        "batch_size": 8,
+        "model": "gpt2"
+      },
+      "train_size": 64,
+      "dev_size": 32,
+      "test_size": null,
+      "best_epoch": 0,
+      "dev_acc": 0.4062,
+      "dev_f1": 0.1926,
+      "test_acc": null,
+      "test_f1": null,
+      "train_loss": 2.1876,
+      "trainable_params": 225029,
+      "total_params": 103994117,
+      "trainable_pct": 0.22,
+      "peak_vram_gb": 0.803,
+      "degradation": -0.1123,
+      "degradation_pct": -21.65,
+      "elapsed_min": 0.1,
+      "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+      "timestamp": "2026-05-19 16:48",
+      "dev_pred_file": "/home/ray/yuheng/Dsinai/project/deep-learning-project/results/preds/sentiment_sst_loftq_4bit_rank4_dev.csv",
+      "test_pred_file": null,
+      "curve": {
+        "train_loss": [
+          2.1876,
+          2.031
+        ],
+        "train_acc": [
+          0.4062,
+          0.3594
+        ],
+        "dev_loss": [
+          1.7196,
+          1.6827
+        ],
+        "dev_acc": [
+          0.4062,
+          0.4062
+        ]
+      }
+    },
+    {
+      "task": "sentiment",
+      "dataset": "sst",
+      "method": "loftq",
+      "bits": 2,
+      "rank": 4,
+      "alpha": 16.0,
+      "target_modules": [
+        "query",
+        "key",
+        "value"
+      ],
+      "hparams": {
+        "seed": 11711,
+        "epochs": 2,
+        "lr": 1e-05,
+        "batch_size": 8,
+        "model": "gpt2"
+      },
+      "train_size": 64,
+      "dev_size": 32,
+      "test_size": null,
+      "best_epoch": 0,
+      "dev_acc": 0.3125,
+      "dev_f1": 0.1566,
+      "test_acc": null,
+      "test_f1": null,
+      "train_loss": 1.8527,
+      "trainable_params": 225029,
+      "total_params": 103994117,
+      "trainable_pct": 0.22,
+      "peak_vram_gb": 0.803,
+      "degradation": -0.2061,
+      "degradation_pct": -39.74,
+      "elapsed_min": 0.1,
+      "device": "NVIDIA GeForce RTX 3060 Laptop GPU",
+      "timestamp": "2026-05-19 16:48",
+      "dev_pred_file": "/home/ray/yuheng/Dsinai/project/deep-learning-project/results/preds/sentiment_sst_loftq_2bit_rank4_dev.csv",
+      "test_pred_file": null,
+      "curve": {
+        "train_loss": [
+          1.8527,
+          1.7958
+        ],
+        "train_acc": [
+          0.2656,
+          0.1406
+        ],
+        "dev_loss": [
+          1.5817,
+          1.5625
+        ],
+        "dev_acc": [
+          0.3125,
+          0.3125
+        ]
+      }
+    }
+  ]
+}
