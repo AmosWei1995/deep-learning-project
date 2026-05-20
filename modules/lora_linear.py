@@ -25,7 +25,7 @@ class LoRALinear(nn.Module):
     self.B = nn.Parameter(torch.empty(rank, out_features))
 
     fn = init_fn if init_fn is not None else init_lora
-    fn(self.A, self.B, original_linear.weight, rank=rank)
+    fn(self.A, self.B, original_linear.weight, rank=rank, alpha=alpha)
 
   def forward(self, x: torch.Tensor) -> torch.Tensor:
     return self.original_linear(x) + (self.alpha / self.rank) * (x @ self.A @ self.B)

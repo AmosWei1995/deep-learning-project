@@ -134,5 +134,91 @@
         0.4062
       ]
     }
+  },
+  {
+    "task": "sentiment",
+    "dataset": "sst",
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "hparams": {
+      "init_method": "pissa",
+      "rank": 4,
+      "alpha": 16.0,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "epochs": 10,
+      "seed": 11711,
+      "model": "gpt2"
+    },
+    "init_method": "pissa",
+    "rank": 4,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 1.9749,
+    "trainable_params": 225029,
+    "total_params": 125255429,
+    "trainable_pct": 0.18,
+    "target_dev_acc": 0.516,
+    "steps_to_target_acc": null,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.8,
+    "device": "CPU (AMD64 Family 25 Model 97 Stepping 2, AuthenticAMD)",
+    "timestamp": "2026-05-19 06:57",
+    "dev_pred_file": "predictions/lora/sentiment_sst_pissa_rank4_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        1.9749,
+        2.0594,
+        1.9386,
+        1.8469,
+        1.9652,
+        1.8491,
+        1.7749,
+        1.7971,
+        1.9818,
+        1.7481
+      ],
+      "train_acc": [
+        0.4219,
+        0.4062,
+        0.4375,
+        0.4531,
+        0.4062,
+        0.3906,
+        0.375,
+        0.4375,
+        0.375,
+        0.4062
+      ],
+      "dev_loss": [
+        1.7002,
+        1.6508,
+        1.6039,
+        1.5602,
+        1.5173,
+        1.4774,
+        1.4421,
+        1.4104,
+        1.3735,
+        1.3435
+      ],
+      "dev_acc": [
+        0.4062,
+        0.4062,
+        0.4062,
+        0.4062,
+        0.4062,
+        0.4062,
+        0.4062,
+        0.4062,
+        0.4062,
+        0.4062
+      ]
+    }
   }
 ]
