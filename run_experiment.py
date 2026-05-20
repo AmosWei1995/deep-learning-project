@@ -38,7 +38,7 @@ python3 run_experiment.py --task paraphrase --use_gpu
 
 '''
 
-import os, json, random, argparse, time
+import os, json, random, argparse, time, subprocess, sys
 from datetime import datetime
 import numpy as np
 import torch
@@ -388,9 +388,50 @@ def run_sentiment(args):
         print(f'  => best dev acc: {best_acc:.4f}  predictions -> {dev_pred_path}')
 
 
+def run_exp3_quant(args):
+  ext_script = os.path.join('extensions', 'exp3_quant_lora', 'run_exp3.py')
+  if not os.path.exists(ext_script):
+    raise FileNotFoundError(
+      f'Exp3 extension script not found: {ext_script}. '
+      'Please ensure extensions/exp3_quant_lora is integrated into this project.'
+    )
+
+  if args.dataset is not None and args.dataset != 'sst':
+    raise ValueError('exp3_quant currently supports dataset=sst only.')
+
+  cmd = [sys.executable, ext_script]
+  if args.use_gpu:
+    cmd.append('--use_gpu')
+  if args.smoke:
+    cmd.append('--smoke')
+  if args.rerun:
+    cmd.append('--rerun')
+  if args.dataset is not None:
+    cmd.extend(['--dataset', args.dataset])
+  if args.rank is not None:
+    cmd.extend(['--rank', str(args.rank)])
+  if args.epochs is not None:
+    cmd.extend(['--epochs', str(args.epochs)])
+  if args.batch_size is not None:
+    cmd.extend(['--batch_size', str(args.batch_size)])
+  if args.exp3_method is not None:
+    cmd.extend(['--method', args.exp3_method])
+  if args.exp3_bits is not None:
+    cmd.extend(['--bits', str(args.exp3_bits)])
+  if args.exp3_alpha is not None:
+    cmd.extend(['--alpha', str(args.exp3_alpha)])
+  if args.exp3_baseline_dev_acc is not None:
+    cmd.extend(['--baseline-dev-acc', str(args.exp3_baseline_dev_acc)])
+  if args.dlp_root is not None:
+    cmd.extend(['--dlp-root', args.dlp_root])
+
+  print(f'Running Exp3 quantization via extension: {" ".join(cmd)}')
+  subprocess.run(cmd, check=True)
+
+
 def get_args():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--task', choices=['sentiment', 'ablation', 'sonnet', 'paraphrase'],
+  parser.add_argument('--task', choices=['sentiment', 'ablation', 'sonnet', 'paraphrase', 'exp3_quant'],
                       default='sentiment')
   parser.add_argument('--use_gpu', action='store_true')
   parser.add_argument('--smoke', action='store_true',
@@ -407,6 +448,16 @@ def get_args():
                       help=f'number of training epochs (default: {FIXED_CONFIG["epochs"]}; ignored in --smoke mode)')
   parser.add_argument('--batch_size', type=int, default=None,
                       help=f'training batch size (default: {FIXED_CONFIG["batch_size"]})')
+  parser.add_argument('--exp3_method', choices=['qlora', 'loftq'], default=None,
+                      help='exp3_quant only: run only the specified quantization method')
+  parser.add_argument('--exp3_bits', type=int, choices=[2, 4], default=None,
+                      help='exp3_quant only: run only the specified quantization bit width')
+  parser.add_argument('--exp3_alpha', type=float, default=None,
+                      help='exp3_quant only: override LoRA alpha')
+  parser.add_argument('--exp3_baseline_dev_acc', type=float, default=None,
+                      help='exp3_quant only: override baseline dev accuracy for degradation')
+  parser.add_argument('--dlp_root', type=str, default=None,
+                      help='exp3_quant only: override project root passed to extension')
   return parser.parse_args()
 
 
@@ -414,6 +465,8 @@ if __name__ == '__main__':
   args = get_args()
   if args.task == 'sentiment':
     run_sentiment(args)
+  elif args.task == 'exp3_quant':
+    run_exp3_quant(args)
   elif args.task in ('ablation', 'sonnet', 'paraphrase'):
     print(f'Task {args.task} not yet implemented — see schedule.md for owners.')
   
