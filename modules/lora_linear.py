@@ -16,8 +16,13 @@ class LoRALinear(nn.Module):
     for p in self.original_linear.parameters():
       p.requires_grad = False
 
-    in_features = original_linear.in_features
-    out_features = original_linear.out_features
+    # Use actual weight shape rather than .in_features/.out_features attributes:
+    # the project loads pretrained weights via weight.data assignment, which can
+    # silently produce a shape mismatch between the attribute and the real tensor
+    # (e.g. interm_dense is constructed with intermediate_size=2304 from config
+    # but the loaded HuggingFace weight has shape (3072, 768)).
+    out_features = original_linear.weight.shape[0]
+    in_features  = original_linear.weight.shape[1]
     self.rank = rank
     self.alpha = alpha
 

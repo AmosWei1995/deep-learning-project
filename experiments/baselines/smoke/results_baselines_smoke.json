@@ -1,0 +1,260 @@
+[
+  {
+    "task": "sst",
+    "fine_tune_mode": "last-linear-layer",
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 2.0449,
+    "trainable_params": 3845,
+    "total_params": 125034245,
+    "trainable_pct": 0.0,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.1,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:26",
+    "dev_pred_file": "experiments/baselines/smoke/predictions/sst_last_linear_layer_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        2.0449
+      ],
+      "train_acc": [
+        0.4062
+      ],
+      "dev_loss": [
+        1.7175
+      ],
+      "dev_acc": [
+        0.4062
+      ]
+    }
+  },
+  {
+    "task": "sst",
+    "fine_tune_mode": "full-model",
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 1.9071,
+    "trainable_params": 125034245,
+    "total_params": 125034245,
+    "trainable_pct": 100.0,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.1,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:26",
+    "dev_pred_file": "experiments/baselines/smoke/predictions/sst_full_model_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        1.9071
+      ],
+      "train_acc": [
+        0.3906
+      ],
+      "dev_loss": [
+        1.3833
+      ],
+      "dev_acc": [
+        0.4062
+      ]
+    }
+  },
+  {
+    "task": "sst",
+    "fine_tune_mode": "last-linear-layer",
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 2.0449,
+    "trainable_params": 3845,
+    "total_params": 125034245,
+    "trainable_pct": 0.0,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.1,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:27",
+    "dev_pred_file": "experiments/baselines/smoke/predictions/sst_last_linear_layer_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        2.0449
+      ],
+      "train_acc": [
+        0.4062
+      ],
+      "dev_loss": [
+        1.7175
+      ],
+      "dev_acc": [
+        0.4062
+      ]
+    }
+  },
+  {
+    "task": "sst",
+    "fine_tune_mode": "full-model",
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 1.9071,
+    "trainable_params": 125034245,
+    "total_params": 125034245,
+    "trainable_pct": 100.0,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.1,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:27",
+    "dev_pred_file": "experiments/baselines/smoke/predictions/sst_full_model_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        1.9071
+      ],
+      "train_acc": [
+        0.3906
+      ],
+      "dev_loss": [
+        1.3833
+      ],
+      "dev_acc": [
+        0.4062
+      ]
+    }
+  },
+  {
+    "task": "cfimdb",
+    "fine_tune_mode": "last-linear-layer",
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.5312,
+    "dev_f1": 0.3469,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 1.134,
+    "trainable_params": 1538,
+    "total_params": 125031938,
+    "trainable_pct": 0.0,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.4,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:33",
+    "dev_pred_file": "experiments/baselines/smoke/predictions/cfimdb_last_linear_layer_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        1.134
+      ],
+      "train_acc": [
+        0.6094
+      ],
+      "dev_loss": [
+        1.4053
+      ],
+      "dev_acc": [
+        0.5312
+      ]
+    }
+  },
+  {
+    "task": "cfimdb",
+    "fine_tune_mode": "full-model",
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.5,
+    "dev_f1": 0.3333,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 0.9179,
+    "trainable_params": 125031938,
+    "total_params": 125031938,
+    "trainable_pct": 100.0,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.9,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:34",
+    "dev_pred_file": "experiments/baselines/smoke/predictions/cfimdb_full_model_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        0.9179
+      ],
+      "train_acc": [
+        0.5938
+      ],
+      "dev_loss": [
+        0.8375
+      ],
+      "dev_acc": [
+        0.5
+      ]
+    }
+  }
+]

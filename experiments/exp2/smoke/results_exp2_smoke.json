@@ -1,0 +1,332 @@
+[
+  {
+    "task": "sst",
+    "init_method": "lora",
+    "target": "QV",
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "rank": 4,
+    "alpha": 16.0,
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 1.8629,
+    "trainable_params": 151301,
+    "total_params": 125181701,
+    "trainable_pct": 0.12,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.1,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:13",
+    "dev_pred_file": "experiments/exp2/smoke/predictions/sst_lora_QV_rank4_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        1.8629
+      ],
+      "train_acc": [
+        0.3906
+      ],
+      "dev_loss": [
+        1.5812
+      ],
+      "dev_acc": [
+        0.4062
+      ]
+    },
+    "loss_after_init": 1.7538,
+    "fft_dev_acc": 0.516,
+    "steps_to_80pct_fft": null,
+    "steps_to_95pct_fft": null,
+    "steps_per_epoch": 8
+  },
+  {
+    "task": "sst",
+    "init_method": "pissa",
+    "target": "QV",
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "rank": 4,
+    "alpha": 16.0,
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 2.1057,
+    "trainable_params": 151301,
+    "total_params": 125181701,
+    "trainable_pct": 0.12,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.1,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:13",
+    "dev_pred_file": "experiments/exp2/smoke/predictions/sst_pissa_QV_rank4_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        2.1057
+      ],
+      "train_acc": [
+        0.4219
+      ],
+      "dev_loss": [
+        1.708
+      ],
+      "dev_acc": [
+        0.4062
+      ]
+    },
+    "loss_after_init": 1.7538,
+    "fft_dev_acc": 0.516,
+    "steps_to_80pct_fft": null,
+    "steps_to_95pct_fft": null,
+    "steps_per_epoch": 8
+  },
+  {
+    "task": "sst",
+    "init_method": "lora",
+    "target": "QV",
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "rank": 4,
+    "alpha": 16.0,
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 1.8629,
+    "trainable_params": 151301,
+    "total_params": 125181701,
+    "trainable_pct": 0.12,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.1,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:28",
+    "dev_pred_file": "experiments/exp2/smoke/predictions/sst_lora_QV_rank4_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        1.8629
+      ],
+      "train_acc": [
+        0.3906
+      ],
+      "dev_loss": [
+        1.5812
+      ],
+      "dev_acc": [
+        0.4062
+      ]
+    },
+    "loss_after_init": 1.7538,
+    "fft_dev_acc": 0.516,
+    "steps_to_80pct_fft": null,
+    "steps_to_95pct_fft": null,
+    "steps_per_epoch": 8
+  },
+  {
+    "task": "sst",
+    "init_method": "pissa",
+    "target": "QV",
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "rank": 4,
+    "alpha": 16.0,
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.4062,
+    "dev_f1": 0.1926,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 2.1057,
+    "trainable_params": 151301,
+    "total_params": 125181701,
+    "trainable_pct": 0.12,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.1,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:28",
+    "dev_pred_file": "experiments/exp2/smoke/predictions/sst_pissa_QV_rank4_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        2.1057
+      ],
+      "train_acc": [
+        0.4219
+      ],
+      "dev_loss": [
+        1.708
+      ],
+      "dev_acc": [
+        0.4062
+      ]
+    },
+    "loss_after_init": 1.7538,
+    "fft_dev_acc": 0.516,
+    "steps_to_80pct_fft": null,
+    "steps_to_95pct_fft": null,
+    "steps_per_epoch": 8
+  },
+  {
+    "task": "cfimdb",
+    "init_method": "lora",
+    "target": "QV",
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "rank": 4,
+    "alpha": 16.0,
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.5312,
+    "dev_f1": 0.3469,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 1.1307,
+    "trainable_params": 148994,
+    "total_params": 125179394,
+    "trainable_pct": 0.12,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.8,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:37",
+    "dev_pred_file": "experiments/exp2/smoke/predictions/cfimdb_lora_QV_rank4_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        1.1307
+      ],
+      "train_acc": [
+        0.6094
+      ],
+      "dev_loss": [
+        1.2364
+      ],
+      "dev_acc": [
+        0.5312
+      ]
+    },
+    "loss_after_init": 1.4425,
+    "fft_dev_acc": 0.976,
+    "steps_to_80pct_fft": null,
+    "steps_to_95pct_fft": null,
+    "steps_per_epoch": 8
+  },
+  {
+    "task": "cfimdb",
+    "init_method": "pissa",
+    "target": "QV",
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "rank": 4,
+    "alpha": 16.0,
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "test_size": null,
+    "best_epoch": 0,
+    "dev_acc": 0.5312,
+    "dev_f1": 0.3469,
+    "test_acc": null,
+    "test_f1": null,
+    "train_loss": 1.262,
+    "trainable_params": 148994,
+    "total_params": 125179394,
+    "trainable_pct": 0.12,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.9,
+    "device": "CPU (arm)",
+    "timestamp": "2026-05-20 23:38",
+    "dev_pred_file": "experiments/exp2/smoke/predictions/cfimdb_pissa_QV_rank4_dev.csv",
+    "test_pred_file": null,
+    "curve": {
+      "train_loss": [
+        1.262
+      ],
+      "train_acc": [
+        0.6094
+      ],
+      "dev_loss": [
+        1.3925
+      ],
+      "dev_acc": [
+        0.5312
+      ]
+    },
+    "loss_after_init": 1.4425,
+    "fft_dev_acc": 0.976,
+    "steps_to_80pct_fft": null,
+    "steps_to_95pct_fft": null,
+    "steps_per_epoch": 8
+  }
+]
