@@ -447,7 +447,10 @@ def run_one_baseline(
     trainable, total_params = count_params(model)
     print(f'  trainable: {trainable:,} / {total_params:,} ({100*trainable/total_params:.2f}%)')
 
-    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=FIXED['lr'])
+    # last-linear-layer trains only the classifier head (~3845 params); use a
+    # higher lr matching classifier.py defaults so the probe converges properly.
+    baseline_lr = 1e-3 if fine_tune_mode == 'last-linear-layer' else FIXED['lr']
+    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=baseline_lr)
 
     best_acc, best_loss, best_epoch = 0.0, float('inf'), 0
     best_preds, best_true, best_sent_ids = [], [], []
@@ -498,7 +501,7 @@ def run_one_baseline(
         'task':           dataset,
         'fine_tune_mode': fine_tune_mode,
         'hparams': {
-            'seed': FIXED['seed'], 'epochs': epochs, 'lr': FIXED['lr'],
+            'seed': FIXED['seed'], 'epochs': epochs, 'lr': baseline_lr,
             'batch_size': batch_size, 'model': FIXED['model_size'],
         },
         'train_size':     len(train_data),

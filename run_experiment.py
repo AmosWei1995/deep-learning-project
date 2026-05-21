@@ -53,6 +53,9 @@ from classifier import (
   load_data, model_eval,
 )
 from modules.lora_linear import apply_lora, init_lora
+from paraphrase_detection import ParaphraseGPT, add_arguments as para_add_arguments
+from datasets import ParaphraseDetectionDataset, load_paraphrase_data
+from evaluation import model_eval_paraphrase
 
 def _try_import(module_name, fn_name):
   try:
@@ -72,7 +75,24 @@ if _init_loftq is not None:
 from optimizer import AdamW
 from utils import get_device
 
-RESULTS_PATH = 'predictions/results.json'
+RESULTS_PATH          = 'predictions/results.json'
+ABLATION_RESULTS_PATH = 'predictions/results_ablation.json'
+
+ABLATION_GRID = {
+  'rank':   [4, 8, 16, 32],
+  'target': {
+    'QV':  ['query', 'value'],
+    'QKV': ['query', 'key', 'value'],
+    'ALL': ['query', 'key', 'value', 'attention_dense', 'interm_dense', 'out_dense'],
+  },
+  'alpha': 16.0,
+}
+
+QUORA_CONFIG = {
+  'train': 'data/quora-train.csv',
+  'dev':   'data/quora-dev.csv',
+  'test':  'data/quora-test-student.csv',
+}
 
 FIXED_CONFIG = {
   'seed':       11711,
@@ -403,6 +423,185 @@ def run_sentiment(args):
         print(f'  => best dev acc: {best_acc:.4f}  predictions -> {dev_pred_path}')
 
 
+def compute_dev_loss_paraphrase(model, dataloader, device):
+  model.eval()
+  total_loss, n = 0, 0
+  with torch.no_grad():
+    for batch in dataloader:
+      b_ids      = batch['token_ids'].to(device)
+      b_mask     = batch['attention_mask'].to(device)
+      answer_ids = batch['answer_token_ids'].to(device)
+      logits     = model(b_ids, b_mask)
+      total_loss += F.cross_entropy(logits, answer_ids, reduction='mean').item()
+      n += 1
+  return total_loss / max(n, 1)
+
+
+def train_one_epoch_paraphrase(model, dataloader, optimizer, device):
+  model.train()
+  total_loss, correct, total, n = 0, 0, 0, 0
+  for batch in tqdm(dataloader, desc='train'):
+    b_ids      = batch['token_ids'].to(device)
+    b_mask     = batch['attention_mask'].to(device)
+    answer_ids = batch['answer_token_ids'].to(device)
+    optimizer.zero_grad()
+    logits = model(b_ids, b_mask)
+    loss   = F.cross_entropy(logits, answer_ids, reduction='mean')
+    loss.backward()
+    optimizer.step()
+    total_loss += loss.item()
+    correct    += (logits.argmax(dim=-1) == answer_ids).sum().item()
+    total      += answer_ids.size(0)
+    n          += 1
+  return total_loss / max(n, 1), correct / max(total, 1)
+
+
+def run_ablation(args):
+  results_path = (ABLATION_RESULTS_PATH.replace('.json', '_smoke.json')
+                  if args.smoke else ABLATION_RESULTS_PATH)
+
+  if args.rerun and os.path.exists(results_path):
+    backup = results_path.replace('.json', '_backup.json')
+    os.rename(results_path, backup)
+    print(f'Old results backed up to {backup}')
+
+  results = []
+  if os.path.exists(results_path):
+    with open(results_path) as f:
+      content = f.read().strip()
+      if content:
+        results = json.loads(content)
+
+  device     = get_device(args.use_gpu)
+  batch_size = args.batch_size or FIXED_CONFIG['batch_size']
+  epochs     = 1 if args.smoke else (args.epochs or FIXED_CONFIG['epochs'])
+
+  model_args = SimpleNamespace(model_size=FIXED_CONFIG['model_size'])
+  model_args = para_add_arguments(model_args)
+
+  train_data = load_paraphrase_data(QUORA_CONFIG['train'])
+  dev_data   = load_paraphrase_data(QUORA_CONFIG['dev'])
+  if args.smoke:
+    train_data = train_data[:64]
+    dev_data   = dev_data[:32]
+
+  train_ds     = ParaphraseDetectionDataset(train_data, model_args)
+  dev_ds       = ParaphraseDetectionDataset(dev_data,   model_args)
+  train_loader = DataLoader(train_ds, shuffle=True,  batch_size=batch_size, collate_fn=train_ds.collate_fn)
+  dev_loader   = DataLoader(dev_ds,   shuffle=False, batch_size=batch_size, collate_fn=dev_ds.collate_fn)
+
+  ranks   = [4] if args.smoke else ABLATION_GRID['rank']
+  targets = {'QV': ABLATION_GRID['target']['QV']} if args.smoke else ABLATION_GRID['target']
+
+  for target_key, target_modules in targets.items():
+    for rank in ranks:
+      already = any(r.get('target') == target_key and r.get('rank') == rank for r in results)
+      if already and not args.rerun:
+        print(f'\n=== ablation | target={target_key} | rank={rank} — already done, skipping ===')
+        continue
+
+      print(f'\n=== ablation | target={target_key} | rank={rank} ===')
+      seed_everything(FIXED_CONFIG['seed'])
+      if device.type == 'cuda':
+        torch.cuda.reset_peak_memory_stats(device)
+      t_start = time.time()
+
+      model = ParaphraseGPT(model_args)
+      for param in model.gpt.parameters():
+        param.requires_grad = False
+      model = apply_lora(model, rank=rank, alpha=ABLATION_GRID['alpha'],
+                         init_fn=init_lora, target_modules=target_modules)
+      model = model.to(device)
+
+      trainable    = sum(p.numel() for p in model.parameters() if p.requires_grad)
+      total_params = sum(p.numel() for p in model.parameters())
+      print(f'  trainable: {trainable:,} / {total_params:,} ({100*trainable/total_params:.2f}%)')
+
+      optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()),
+                        lr=FIXED_CONFIG['lr'])
+
+      best_acc, best_epoch = 0.0, 0
+      best_preds, best_true, best_sent_ids = [], [], []
+      curve = {'train_loss': [], 'train_acc': [], 'dev_loss': [], 'dev_acc': []}
+
+      for epoch in range(epochs):
+        train_loss, train_acc = train_one_epoch_paraphrase(model, train_loader, optimizer, device)
+        dev_acc, _, preds, true, sent_ids = model_eval_paraphrase(dev_loader, model, device)
+        dev_loss = compute_dev_loss_paraphrase(model, dev_loader, device)
+        curve['train_loss'].append(round(train_loss, 4))
+        curve['train_acc'].append(round(train_acc,   4))
+        curve['dev_loss'].append(round(dev_loss,     4))
+        curve['dev_acc'].append(round(dev_acc,       4))
+        if dev_acc > best_acc:
+          best_acc, best_epoch = dev_acc, epoch
+          best_preds, best_true, best_sent_ids = preds, true, sent_ids
+        print(f'  epoch {epoch}: train_loss={train_loss:.4f}  train_acc={train_acc:.4f}'
+              f'  dev_loss={dev_loss:.4f}  dev_acc={dev_acc:.4f}')
+
+      if args.smoke:
+        assert not any(v != v for v in curve['train_loss']), 'NaN in train_loss'
+        assert 0.0 <= best_acc <= 1.0, f'dev_acc out of range: {best_acc}'
+        print('  [smoke] sanity assertions passed ✓')
+
+      elapsed   = time.time() - t_start
+      peak_vram = (round(torch.cuda.max_memory_allocated(device) / (1024**2), 1)
+                   if device.type == 'cuda' else None)
+
+      pred_dir = 'predictions/ablation'
+      os.makedirs(pred_dir, exist_ok=True)
+      tag          = f'quora_lora_{target_key}_rank{rank}'
+      dev_pred_path = f'{pred_dir}/{tag}_dev.csv'
+      save_preds_csv(dev_pred_path, best_sent_ids, best_preds, best_true)
+
+      entry = {
+        'task':           'ablation',
+        'dataset':        'quora',
+        'target':         target_key,
+        'target_modules': target_modules,
+        'rank':           rank,
+        'alpha':          ABLATION_GRID['alpha'],
+        'init_method':    'lora',
+        'hparams': {
+          'seed': FIXED_CONFIG['seed'], 'epochs': epochs, 'lr': FIXED_CONFIG['lr'],
+          'batch_size': batch_size, 'model': FIXED_CONFIG['model_size'],
+        },
+        'train_size':       len(train_data),
+        'dev_size':         len(dev_data),
+        'best_epoch':       best_epoch,
+        'dev_acc':          round(best_acc, 4),
+        'dev_f1':           round(f1_score(best_true, best_preds, average='macro'), 4),
+        'train_loss':       round(curve['train_loss'][best_epoch], 4),
+        'trainable_params': trainable,
+        'total_params':     total_params,
+        'trainable_pct':    round(100 * trainable / total_params, 2),
+        'peak_vram_mb':     peak_vram,
+        'elapsed_min':      round(elapsed / 60, 1),
+        'device':           get_device_name(device),
+        'timestamp':        datetime.now().strftime('%Y-%m-%d %H:%M'),
+        'dev_pred_file':    dev_pred_path,
+        'curve':            curve,
+      }
+      results.append(entry)
+      os.makedirs(os.path.dirname(results_path), exist_ok=True)
+      with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+      print(f'  => best dev acc: {best_acc:.4f}  → {dev_pred_path}')
+
+  print('\n' + '=' * 60)
+  print('ABLATION SUMMARY (Quora paraphrase)')
+  for e in sorted(results, key=lambda x: -x['dev_acc']):
+    print(f'  target={e["target"]:<5} rank={e["rank"]:<4} '
+          f'dev_acc={e["dev_acc"]:.4f}  trainable={e["trainable_pct"]}%')
+  if results:
+    best_val  = max(e['dev_acc'] for e in results)
+    threshold = best_val * 0.95
+    cands     = [e for e in results if e['dev_acc'] >= threshold]
+    opt       = min(cands, key=lambda x: x['trainable_pct'])
+    print(f'\nConfig_opt: rank={opt["rank"]}  target={opt["target"]}  '
+          f'dev_acc={opt["dev_acc"]:.4f}  trainable={opt["trainable_pct"]}%')
+  print('=' * 60)
+
+
 def run_exp3_quant(args):
   ext_script = os.path.join('extensions', 'exp3_quant_lora', 'run_exp3.py')
   if not os.path.exists(ext_script):
@@ -457,7 +656,7 @@ def get_args():
                       help='run only the specified dataset (default: all)')
   parser.add_argument('--init', choices=['lora', 'pissa', 'loftq'], default=None,
                       help='run only the specified init_method')
-  parser.add_argument('--rank', type=int, choices=[4, 8, 16], default=None,
+  parser.add_argument('--rank', type=int, choices=[4, 8, 16, 32], default=None,
                       help='run only the specified rank')
   parser.add_argument('--epochs', type=int, default=None,
                       help=f'number of training epochs (default: {FIXED_CONFIG["epochs"]}; ignored in --smoke mode)')
@@ -482,6 +681,8 @@ if __name__ == '__main__':
     run_sentiment(args)
   elif args.task == 'exp3_quant':
     run_exp3_quant(args)
-  elif args.task in ('ablation', 'sonnet', 'paraphrase'):
+  elif args.task == 'ablation':
+    run_ablation(args)
+  elif args.task in ('sonnet', 'paraphrase'):
     print(f'Task {args.task} not yet implemented — see schedule.md for owners.')
   

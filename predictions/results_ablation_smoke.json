@@ -1,0 +1,49 @@
+[
+  {
+    "task": "ablation",
+    "dataset": "quora",
+    "target": "QV",
+    "target_modules": [
+      "query",
+      "value"
+    ],
+    "rank": 4,
+    "alpha": 16.0,
+    "init_method": "lora",
+    "hparams": {
+      "seed": 11711,
+      "epochs": 1,
+      "lr": 1e-05,
+      "batch_size": 8,
+      "model": "gpt2"
+    },
+    "train_size": 64,
+    "dev_size": 32,
+    "best_epoch": 0,
+    "dev_acc": 0.75,
+    "dev_f1": 0.4286,
+    "train_loss": 10.714,
+    "trainable_params": 147456,
+    "total_params": 125177856,
+    "trainable_pct": 0.12,
+    "peak_vram_mb": null,
+    "elapsed_min": 0.8,
+    "device": "CPU (x86_64)",
+    "timestamp": "2026-05-21 09:48",
+    "dev_pred_file": "predictions/ablation/quora_lora_QV_rank4_dev.csv",
+    "curve": {
+      "train_loss": [
+        10.714
+      ],
+      "train_acc": [
+        0.0
+      ],
+      "dev_loss": [
+        10.6641
+      ],
+      "dev_acc": [
+        0.75
+      ]
+    }
+  }
+]
