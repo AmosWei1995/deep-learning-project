@@ -1,42 +1,21 @@
 '''
-Sonnet generation starter code.
+Sonnet generation: train SonnetGPT.
 
-Running:
-  `python sonnet_generation.py --use_gpu`
+  python sonnet_generation.py --use_gpu
 
-可选：若仍希望每个 epoch 在终端打印 held-out 续写示例（或提交阶段打印解码全文），追加
-`--print_generated_sonnets`；默认关闭以减轻刷屏。
+Each epoch logs train/dev loss. Optional flags:
+  --compute_chrf              train/dev chrF++ (needs dev full + prompt paths)
+  --save_every_epoch          checkpoint per epoch ({epoch}_{epochs}-{lr}-sonnet.pt)
+  --print_generated_sonnets   print continuations each epoch (off by default)
 
-每个 epoch 会打印 train / dev 的 loss。若追加 `--compute_chrf`，再计算并打印 train / dev 的 chrF++
-（此时依赖 `--dev_full_sonnet_path` 与 `--dev_prompt_sonnet_path`）。
+After training: saves `{epochs}-{lr}-sonnet.pt`, dev continuations, and held-out predictions.
 
-训练结束后保存最终权重到 `{epochs}-{lr}-sonnet.pt`，并写入 dev 续写（`--dev_sonnet_out`）与提交用 held-out 文件。
-若需要每个 epoch 各存一份 checkpoint，追加 `--save_every_epoch`（文件名为 `{epoch}_{epochs}-{lr}-sonnet.pt`）。
 
-trains your SonnetGPT model and writes the required submission files.
-
-常用命令
---------
-# 正常训练，跑完自动写预测文件
-python sonnet_generation.py --use_gpu
-
-# 不重新训练，只用已有 checkpoint 算 dev loss 和 dev chrF++
-python sonnet_generation.py --eval_only --filepath 10-1e-05-sonnet.pt --use_gpu
-
-# 训练时同步算 chrF（慢，每个 epoch 要对全量数据生成一遍）
-python sonnet_generation.py --use_gpu --compute_chrf
-
-# 每个 epoch 单独存一份 checkpoint（默认只存最后一轮）
-python sonnet_generation.py --use_gpu --save_every_epoch
-
-# 在终端打印续写结果（默认关闭）
-python sonnet_generation.py --use_gpu --print_generated_sonnets
-
-输出文件
---------
-{epochs}-{lr}-sonnet.pt              训练完的模型权重
-predictions/generated_sonnets.txt    held-out 集的续写结果（提交用）
-predictions/generated_sonnets_dev.txt dev 集的续写结果（自测用）
+Outputs
+-------
+{epochs}-{lr}-sonnet.pt                 final weights
+predictions/generated_sonnets.txt       held-out (submission)
+predictions/generated_sonnets_dev.txt   dev set (evaluation)
 '''
 
 import argparse
@@ -65,10 +44,7 @@ TQDM_DISABLE = False
 
 
 def _prefix_first_k_non_empty_lines(full_sonnet: str, k: int = 3) -> str:
-  """
-  改进目的：为「训练集 chrF」构造与 held-out 风格一致的前缀（前 k 个非空文本行），
-  使生成评测与作业提供的 dev 前缀格式对齐，便于同一套 chrF 逻辑复用。
-  """
+  """Extract the first k non-empty lines as a prefix, matching the held-out prompt format."""
   lines = [ln for ln in full_sonnet.splitlines() if ln.strip()]
   if len(lines) <= k:
     return full_sonnet.strip()
@@ -77,10 +53,7 @@ def _prefix_first_k_non_empty_lines(full_sonnet: str, k: int = 3) -> str:
 
 @torch.no_grad()
 def compute_average_lm_loss(model, dataloader, device, desc: str = 'eval'):
-  """
-  改进目的：在任意 DataLoader 上计算与训练相同的 next-token 交叉熵均值（不反传），
-  用于 dev / 校验集上的 loss，弥补原先只有 train loss 的监控盲区。
-  """
+  """Compute mean next-token cross-entropy over a dataloader (no backprop)."""
   model.eval()
   total_loss = 0.0
   num_batches = 0
@@ -99,11 +72,8 @@ def compute_average_lm_loss(model, dataloader, device, desc: str = 'eval'):
 
 @torch.no_grad()
 def compute_corpus_chrf_with_prefixes(model, prefixes, references, device, args, desc: str = 'chrf'):
-  """
-  改进目的：在「前缀 + 模型续写」与「参考全文」之间计算语料级 chrF（与 evaluation.test_sonnet 同用 sacrebleu），
-  分别用于训练监控与 dev 监控，避免只有 loss 而看不到生成质量。
-  """
-  assert len(prefixes) == len(references), 'prefixes 与 references 必须一一对应、长度一致'
+
+  assert len(prefixes) == len(references), 'prefixes and references must have the same length'
   model.eval()
   chrf = CHRF()
   hypotheses = []
@@ -228,8 +198,6 @@ def train(args):
   sonnet_dataloader = DataLoader(sonnet_dataset, shuffle=True, batch_size=args.batch_size,
                                  collate_fn=sonnet_dataset.collate_fn)
 
-  # 改进目的：在「带完整参考答案」的 dev 句子上计算 dev loss（与训练相同的 next-token CE），
-  # 与 train loss 并列打印，便于观察过拟合与泛化。
   dev_full_dataset = SonnetsDataset(args.dev_full_sonnet_path)
   dev_dataloader = DataLoader(
     dev_full_dataset,
@@ -238,10 +206,9 @@ def train(args):
     collate_fn=dev_full_dataset.collate_fn,
   )
 
-  # 改进目的：dev 前缀与 dev 金标条数一致时才可做 dev loss / chrF / 保存 dev 生成。
   dev_prompt_dataset = SonnetsDataset(args.dev_prompt_sonnet_path)
   assert len(dev_prompt_dataset) == len(dev_full_dataset), (
-    'dev 前缀集与 dev 金标条数不一致，请检查 dev_prompt_sonnet_path 与 dev_full_sonnet_path。'
+    'dev prompt and reference sets must have the same length'
   )
 
   # Create the held-out dataset: these only have the first 3 lines. Your job is to fill in the rest!
@@ -280,11 +247,8 @@ def train(args):
 
     train_loss = train_loss / num_batches
 
-    # 改进目的：每个 epoch 结束除 train loss 外，同时汇报 dev loss 与 train/dev 的语料级 chrF，
-    # 形成与「仅看 train loss + 终端刷生成句」相比更完整的训练曲线与质量信号。
     dev_loss = compute_average_lm_loss(model, dev_dataloader, device, desc=f'dev-loss-{epoch}')
 
-    # 改进目的：chrF 需逐条生成，默认关闭以加快训练；需要监控生成质量时再加 --compute_chrf。
     if args.compute_chrf:
       train_prefixes = [_prefix_first_k_non_empty_lines(sonnet_dataset[i][1], k=3) for i in range(len(sonnet_dataset))]
       train_refs = [sonnet_dataset[i][1] for i in range(len(sonnet_dataset))]
@@ -297,7 +261,6 @@ def train(args):
         model, dev_prefixes, dev_refs, device, args, desc=f'dev-chrf-{epoch}'
       )
 
-    # 以下为原始「仅 train loss」的终端输出；已由上一行汇总指标替代，故整段注释保留，便于对照与回滚实验。
     # print(f"Epoch {epoch}: train loss :: {train_loss :.3f}.")
     if args.compute_chrf:
       print(
@@ -307,8 +270,6 @@ def train(args):
     else:
       print(f"Epoch {epoch}: train loss :: {train_loss :.3f}, dev loss :: {dev_loss :.3f}.")
 
-    # 改进目的：原先每个 epoch 都在终端打印大量续写结果，信息噪声大；默认关闭，仅当用户传入
-    # --print_generated_sonnets 时才打印，需要肉眼检查生成时再打开。
     # print('Generating several output sonnets...')
     # model.eval()
     # for batch in held_out_sonnet_dataset:
@@ -324,7 +285,6 @@ def train(args):
         print(f'{batch[1]}{output[1]}\n\n')
 
     # TODO: consider a stopping condition to prevent overfitting on the small dataset of sonnets.
-    # 默认不在每轮写盘；若传入 --save_every_epoch，则每轮额外保存 f'{epoch}_{args.filepath}'（与最终 args.filepath 并存）。
     if args.save_every_epoch:
       save_model(model, optimizer, args, f'{epoch}_{args.filepath}')
 
@@ -335,9 +295,7 @@ def train(args):
 
 @torch.no_grad()
 def write_dev_generated_sonnets(model, args, device, dev_prompt_dataset):
-  """
-  在 dev 前缀集上续写并写入磁盘，格式与 generate_submission_sonnets 一致，便于与 TRUE_sonnets_held_out_dev 对照。
-  """
+  """Generate continuations for dev prompts and save to disk."""
   model.eval()
   lines = []
   for batch in tqdm(dev_prompt_dataset, desc='save-dev-gen', disable=TQDM_DISABLE):
@@ -380,7 +338,6 @@ def generate_submission_sonnets(args):
     full_sonnet = f'{decoded_output}\n\n'
     generated_sonnets.append((sonnet_id, full_sonnet))
 
-    # 改进目的：与训练阶段一致，提交脚本默认不在终端刷屏；需要查看时再传 --print_generated_sonnets。
     # print(f'{decoded_output}\n\n')
     if args.print_generated_sonnets:
       print(f'{decoded_output}\n\n')
@@ -394,10 +351,7 @@ def generate_submission_sonnets(args):
 
 @torch.no_grad()
 def eval_only(args):
-  """
-  加载已有 checkpoint，只计算 dev loss 和 dev chrF++，不重新训练。
-  用法：python sonnet_generation.py --eval_only [--filepath 10-1e-05-sonnet.pt] --use_gpu
-  """
+  """Load a checkpoint and compute dev loss and dev chrF++ without retraining."""
   device = get_device(args.use_gpu)
   saved = torch.load(args.filepath, weights_only=False)
 
@@ -410,7 +364,7 @@ def eval_only(args):
   dev_full_dataset = SonnetsDataset(args.dev_full_sonnet_path)
   dev_prompt_dataset = SonnetsDataset(args.dev_prompt_sonnet_path)
   assert len(dev_prompt_dataset) == len(dev_full_dataset), \
-    'dev 前缀集与 dev 金标条数不一致'
+    'dev prompt and reference sets must have the same length'
 
   dev_dataloader = DataLoader(
     dev_full_dataset,
@@ -442,46 +396,42 @@ def get_args():
     "--dev_sonnet_out",
     type=str,
     default="predictions/generated_sonnets_dev.txt",
-    help="训练结束后将 dev 前缀续写写入该路径（与 sonnet_out 并列）。",
+    help="Output path for dev continuations.",
   )
 
-  # 改进目的：dev loss / dev chrF 使用的数据路径与作业仓库中的 dev 金标、dev 前缀文件对应。
   parser.add_argument(
     "--dev_full_sonnet_path",
     type=str,
     default="data/TRUE_sonnets_held_out_dev.txt",
-    help="完整 dev 金标（用于 dev loss；若使用 --compute_chrf 则亦用于 dev chrF 的 reference）。",
+    help="Full dev references (for dev loss and chrF).",
   )
   parser.add_argument(
     "--dev_prompt_sonnet_path",
     type=str,
     default="data/sonnets_held_out_dev.txt",
-    help="dev 前缀集（仅前几行；用于 dev chrF、训练结束时的 dev 生成文件；与 dev_full 按顺序对齐）。",
+    help="Dev prompts (first few lines); used for dev chrF and dev generation output.",
   )
 
-  # 改进目的：chrF 依赖大量生成，默认不算；需要 train/dev chrF 监控时显式打开。
   parser.add_argument(
     "--compute_chrf",
     action="store_true",
-    help="每个 epoch 计算并打印 train / dev 的 chrF++（会显著增加耗时）。",
+    help="Compute train/dev chrF++ each epoch (slow).",
   )
 
-  # 改进目的：默认不在终端打印每个 epoch / 提交阶段的生成全文；显式传入本开关时再打印，减轻视觉干扰。
   parser.add_argument(
     "--print_generated_sonnets",
     action="store_true",
-    help="在终端打印训练每个 epoch 的 held-out 续写示例，以及 generate_submission_sonnets 时的解码结果。",
+    help="Print generated sonnet continuations to stdout.",
   )
 
   parser.add_argument("--seed", type=int, default=11711)
   parser.add_argument("--epochs", type=int, default=10)
   parser.add_argument("--use_gpu", action='store_true')
 
-  # 默认仅训练结束保存最终 pt；打开后每个 epoch 额外保存 `{epoch}_{filepath}`，便于挑轮次或断点续训。
   parser.add_argument(
     "--save_every_epoch",
     action="store_true",
-    help="每个 epoch 结束后额外保存 checkpoint（文件名前缀为 epoch 序号）；最终仍会保存到主 filepath。",
+    help="Save a checkpoint after each epoch (prefixed with epoch index).",
   )
 
   # Generation parameters.
@@ -497,13 +447,13 @@ def get_args():
   parser.add_argument(
     "--eval_only",
     action="store_true",
-    help="跳过训练，直接加载 --filepath 指定的 checkpoint 计算 dev loss 和 dev chrF++。",
+    help="Skip training; load checkpoint and evaluate dev loss and chrF++.",
   )
   parser.add_argument(
     "--filepath",
     type=str,
     default=None,
-    help="--eval_only 时指定 checkpoint 路径；训练模式下自动从 epochs/lr 推导。",
+    help="Checkpoint path (auto-derived from epochs/lr if not set).",
   )
 
   args = parser.parse_args()
